@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hook — AI Phishing Detector</title>
+  <style>
+    /* ── Reset & base ───────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --surface2:    #21262d;
+      --surface3:    #2d333b;
+      --border:      #30363d;
+      --border2:     #3d444d;
+      --text:        #e6edf3;
+      --text-muted:  #7d8590;
+      --text-dim:    #484f58;
+      --green:       #3fb950;
+      --green-dim:   #1a3a1f;
+      --green-glow:  rgba(63,185,80,0.2);
+      --yellow:      #d29922;
+      --yellow-dim:  #3a2e0a;
+      --yellow-glow: rgba(210,153,34,0.2);
+      --red:         #f85149;
+      --red-dim:     #3a1010;
+      --red-glow:    rgba(248,81,73,0.2);
+      --blue:        #388bfd;
+      --blue-dim:    #0d2149;
+      --accent:      #58a6ff;
+      --accent-glow: rgba(88,166,255,0.15);
+      --radius:      8px;
+      --mono:        'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    }
+
+    html { font-size: 14px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-image: radial-gradient(var(--border) 1px, transparent 1px);
+      background-size: 24px 24px;
+      background-attachment: fixed;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    .app {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      grid-column: 1 / -1;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, var(--accent-glow) 0%, transparent 45%);
+      pointer-events: none;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+      color: var(--accent);
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 7px rgba(88,166,255,0.6));
+    }
+
+    .logo-wordmark {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+    }
+
+    .logo-text {
+      font-size: 1.18rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #e6edf3 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .logo-sub {
+      font-size: 0.62rem;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .header-divider {
+      width: 1px;
+      height: 22px;
+      background: var(--border2);
+      position: relative;
+      z-index: 1;
+    }
+
+    .header-badge {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 0.62rem;
+      color: var(--text-muted);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 1;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+
+    .status-label {
+      font-size: 0.62rem;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--green); }
+      50%       { opacity: 0.5; box-shadow: 0 0 3px var(--green); }
+    }
+
+    /* ── Left panel ─────────────────────────────────────────────────────── */
+    .panel-input {
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 0 20px;
+      height: 40px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .panel-header .ph-icon { font-size: 0.95rem; }
+
+    /* ── Example buttons ────────────────────────────────────────────────── */
+    .examples-row {
+      padding: 9px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      scrollbar-width: none;
+    }
+    .examples-row::-webkit-scrollbar { display: none; }
+
+    .examples-label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .example-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.67rem;
+      font-weight: 600;
+      padding: 3px 11px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .example-btn:hover { background: var(--surface3); color: var(--text); }
+    .example-btn.safe:hover     { border-color: var(--green);  color: var(--green);  }
+    .example-btn.phishing:hover { border-color: var(--red);    color: var(--red);    }
+    .example-btn.suspicious:hover{ border-color: var(--yellow); color: var(--yellow);}
+
+    /* ── Textarea ───────────────────────────────────────────────────────── */
+    textarea#email-input {
+      flex: 1;
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      resize: none;
+      padding: 16px 20px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.7;
+      outline: none;
+      tab-size: 2;
+    }
+    textarea#email-input::placeholder { color: var(--text-dim); }
+
+    /* ── Panel footer ───────────────────────────────────────────────────── */
+    .panel-footer {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .char-count { font-size: 0.67rem; color: var(--text-dim); margin-left: auto; }
+
+    .kbd-hint { font-size: 0.64rem; color: var(--text-dim); }
+    .kbd {
+      display: inline-block;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 0.62rem;
+      color: var(--text-muted);
+    }
+
+    button#analyze-btn {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: var(--radius);
+      padding: 7px 18px;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.15s;
+    }
+    button#analyze-btn:hover { background: #79c0ff; box-shadow: 0 0 18px var(--accent-glow); }
+    button#analyze-btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+
+    .spinner {
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(0,0,0,0.25);
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+      display: none;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Right panel ────────────────────────────────────────────────────── */
+    .panel-right { display: flex; flex-direction: column; overflow: hidden; }
+
+    .results-section {
+      flex: 0 0 auto;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    #results {
+      padding: 18px 20px;
+      overflow-y: auto;
+      max-height: 52vh;
+    }
+    #results::-webkit-scrollbar { width: 4px; }
+    #results::-webkit-scrollbar-track { background: transparent; }
+    #results::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .placeholder {
+      color: var(--text-dim);
+      font-size: 0.78rem;
+      padding: 8px 0;
+      line-height: 1.7;
+    }
+    .placeholder strong { color: var(--text-muted); }
+
+    /* ── Result card entrance ───────────────────────────────────────────── */
+    .result-card { animation: fadeSlideIn 0.28s ease; }
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0);   }
+    }
+
+    /* ── Risk / verdict ─────────────────────────────────────────────────── */
+    .risk-row {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .risk-gauge-wrap {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      flex-shrink: 0;
+    }
+    .risk-gauge-wrap svg { transform: rotate(-90deg); width: 80px; height: 80px; }
+    .risk-gauge-bg   { fill: none; stroke: var(--surface2); stroke-width: 8; }
+    .risk-gauge-fill {
+      fill: none;
+      stroke-width: 8;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.7s cubic-bezier(0.34,1.56,0.64,1), stroke 0.4s;
+    }
+    .risk-label {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .risk-info { flex: 1; }
+    .risk-score-text {
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 5px;
+    }
+
+    .verdict-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 13px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+    .verdict-safe       { background: var(--green-dim);  color: var(--green);  border: 1px solid var(--green);  box-shadow: 0 0 12px var(--green-glow);  }
+    .verdict-suspicious { background: var(--yellow-dim); color: var(--yellow); border: 1px solid var(--yellow); box-shadow: 0 0 12px var(--yellow-glow); }
+    .verdict-phishing   { background: var(--red-dim);    color: var(--red);    border: 1px solid var(--red);    box-shadow: 0 0 12px var(--red-glow);    }
+
+    .risk-bar-wrap {
+      height: 3px;
+      background: var(--surface2);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .risk-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.7s cubic-bezier(0.34,1.56,0.64,1);
+    }
+
+    /* ── Tactics ────────────────────────────────────────────────────────── */
+    .tactics-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .tactic-chip {
+      padding: 4px 10px;
+      border-radius: 5px;
+      font-size: 0.67rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border: 1px solid;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .tactic-active   { background: var(--red-dim);  color: var(--red);      border-color: var(--red);    }
+    .tactic-inactive { background: transparent;     color: var(--text-dim); border-color: var(--border); }
+
+    /* ── Section labels ─────────────────────────────────────────────────── */
+    .section-label {
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--text-dim);
+      margin-bottom: 7px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Explanation / Action boxes ─────────────────────────────────────── */
+    .explanation-box, .action-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-size: 0.79rem;
+      line-height: 1.65;
+      margin-bottom: 14px;
+    }
+    .action-box {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--blue-dim);
+    }
+
+    /* ── Error ──────────────────────────────────────────────────────────── */
+    .error-card {
+      background: var(--red-dim);
+      border: 1px solid var(--red);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      color: var(--red);
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
+
+    /* ── History ────────────────────────────────────────────────────────── */
+    .history-section { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    #history-list { flex: 1; overflow-y: auto; padding: 0 20px 16px; }
+    #history-list::-webkit-scrollbar { width: 4px; }
+    #history-list::-webkit-scrollbar-track { background: transparent; }
+    #history-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .history-empty { color: var(--text-dim); font-size: 0.75rem; padding: 20px 0; text-align: center; }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-item:hover .history-subject { color: var(--accent); }
+
+    .history-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-safe       { background: var(--green);  }
+    .dot-suspicious { background: var(--yellow); }
+    .dot-phishing   { background: var(--red);    }
+
+    .history-meta { flex: 1; min-width: 0; }
+    .history-subject {
+      font-size: 0.76rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
+      margin-bottom: 2px;
+      transition: color 0.12s;
+    }
+    .history-time { font-size: 0.64rem; color: var(--text-dim); }
+    .history-score { font-size: 0.7rem; font-weight: 700; flex-shrink: 0; }
+
+    .history-clear-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 0.64rem;
+      padding: 2px 9px;
+      cursor: pointer;
+      margin-left: auto;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .history-clear-btn:hover { color: var(--red); border-color: var(--red); }
+
+    /* ── Scrollbars ─────────────────────────────────────────────────────── */
+    textarea::-webkit-scrollbar { width: 4px; }
+    textarea::-webkit-scrollbar-track { background: transparent; }
+    textarea::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* ── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; height: auto; overflow: visible; }
+      .panel-input { height: 44vh; }
+      .panel-right { overflow: visible; }
+      #results { max-height: none; }
+      .header-badge, .status-label { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="logo">
+      <!-- Hook SVG icon -->
+      <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="9" y1="3" x2="9" y2="15"/>
+        <path d="M9 15 Q9 21 15 21 Q21 21 21 15 Q21 9 15 9"/>
+        <path d="M15 9 L13 12.5"/>
+      </svg>
+      <div class="logo-wordmark">
+        <span class="logo-text">Hook</span>
+        <span class="logo-sub">AI Phishing Detector</span>
+      </div>
+    </div>
+    <div class="header-divider"></div>
+    <span class="header-badge">powered by Claude</span>
+    <div class="status-indicator">
+      <div class="status-dot" title="Backend ready"></div>
+      <span class="status-label">Live</span>
+    </div>
+  </header>
+
+  <!-- ── Left panel: Email input ─────────────────────────────────────────── -->
+  <div class="panel-input">
+    <div class="panel-header">
+      <span class="ph-icon">📧</span>
+      Email Content
+    </div>
+
+    <!-- Example buttons -->
+    <div class="examples-row">
+      <span class="examples-label">Try:</span>
+      <button class="example-btn safe"      data-example="legit">   ✓ Legit Newsletter</button>
+      <button class="example-btn phishing"  data-example="bank">    ⚠ Bank Phish</button>
+      <button class="example-btn phishing"  data-example="irs">     ⚠ IRS Scam</button>
+      <button class="example-btn phishing"  data-example="package"> ⚠ Package Scam</button>
+      <button class="example-btn phishing"  data-example="ceo">     ⚠ CEO Fraud</button>
+    </div>
+
+    <textarea
+      id="email-input"
+      placeholder="Paste the full email here — include Subject, From, and body text…
+
+Example:
+Subject: Your account has been suspended
+From: security@paypa1.com
+
+Dear Customer, click here to verify…"
+    ></textarea>
+
+    <div class="panel-footer">
+      <button id="analyze-btn">
+        <span class="spinner" id="spinner"></span>
+        <span id="btn-label">⚡ Analyze</span>
+      </button>
+      <span class="kbd-hint"><span class="kbd">Ctrl</span>+<span class="kbd">↵</span></span>
+      <span class="char-count" id="char-count">0 chars</span>
+    </div>
+  </div>
+
+  <!-- ── Right panel: Results + History ──────────────────────────────────── -->
+  <div class="panel-right">
+
+    <div class="results-section">
+      <div class="panel-header">
+        <span class="ph-icon">🔍</span>
+        Analysis Result
+      </div>
+      <div id="results">
+        <p class="placeholder">Paste an email and click <strong>Analyze</strong> — or try one of the example buttons.</p>
+      </div>
+    </div>
+
+    <div class="history-section">
+      <div class="panel-header">
+        <span class="ph-icon">📋</span>
+        Scan History
+        <button class="history-clear-btn" id="clear-history-btn">Clear</button>
+      </div>
+      <div id="history-list">
+        <p class="history-empty">No scans yet.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ── DOM refs ───────────────────────────────────────────────────────────────
+  const emailInput      = document.getElementById('email-input');
+  const analyzeBtn      = document.getElementById('analyze-btn');
+  const btnLabel        = document.getElementById('btn-label');
+  const spinner         = document.getElementById('spinner');
+  const charCount       = document.getElementById('char-count');
+  const resultsEl       = document.getElementById('results');
+  const historyList     = document.getElementById('history-list');
+  const clearHistoryBtn = document.getElementById('clear-history-btn');
+
+  // ── Example emails ─────────────────────────────────────────────────────────
+  const EXAMPLES = {
+    legit: `Subject: Your June Digest from Hacker News Weekly
+From: digest@hackernewsweekly.com
+To: reader@example.com
+
+Hi there,
+
+Here are this week's top stories curated for you:
+
+1. How Cloudflare Uses Rust in Production
+   https://hackernewsweekly.com/articles/cloudflare-rust
+
+2. Understanding LLM Tokenization From First Principles
+   https://hackernewsweekly.com/articles/llm-tokenization
+
+3. The Art of Unix Plumbing (2024 Edition)
+   https://hackernewsweekly.com/articles/unix-plumbing
+
+You're receiving this because you subscribed at hackernewsweekly.com.
+Unsubscribe: https://hackernewsweekly.com/unsubscribe?token=u_abc123xyz
+
+— The HN Weekly Team`,
+
+    bank: `Subject: ⚠️ URGENT: Your Chase Bank account will be suspended in 24 hours
+From: security-alert@chas3-bank.com
+Reply-To: verify@chas3-bank.com
+
+Dear Valued Customer,
+
+Our fraud detection system has flagged SUSPICIOUS ACTIVITY on your Chase
+checking account ending in ****1234. Your account will be PERMANENTLY
+CLOSED IN 24 HOURS unless you verify your identity immediately:
+
+    http://chase-secure-verify.ru/login?session=9A3K7
+
+You will need to confirm:
+  • Online banking username and password
+  • Social Security Number (last 4 digits)
+  • Credit card CVV
+  • One-time verification code from your phone
+
+Do NOT share this email. This is a confidential security communication.
+
+Chase Online Security Team`,
+
+    irs: `Subject: IRS: You are owed a tax refund of $3,847.00 — Claim within 48 hours
+From: irs-refunds@irs-gov-portal.com
+
+INTERNAL REVENUE SERVICE — OFFICIAL NOTIFICATION
+
+Taxpayer ID: ***-**-7823
+
+After a routine audit of 2023 filings, the IRS has determined you are
+eligible for a REFUND of $3,847.00. Complete the secure refund form
+within 48 HOURS or the refund will be FORFEITED and returned to the
+U.S. Treasury.
+
+Complete your refund form here:
+  https://irs-refund-portal.biz/claim?id=TX78230
+
+Required information:
+  - Full legal name and date of birth
+  - Social Security Number
+  - Bank routing + account number for direct deposit
+
+Department of the Treasury — Internal Revenue Service`,
+
+    package: `Subject: Your FedEx package #FX992817364 could not be delivered — action required
+From: noreply@fedex-delivery-update.info
+
+FedEx Delivery Notification
+
+We attempted to deliver your package (Tracking: FX992817364) on June 3.
+Your package will be returned to sender in 3 DAYS unless you reschedule.
+
+To reschedule delivery, a $1.99 redelivery fee is required:
+
+    http://fedex-redeliver.net/pay?pkg=FX992817364
+
+Payment accepted: Visa, Mastercard, PayPal
+
+If you do not act within 72 hours, your package will be destroyed.
+
+FedEx Customer Support
+DO NOT REPLY to this email.`,
+
+    ceo: `Subject: Confidential — Wire transfer needed today
+From: ceo.michael.hartwell@company-corp.net
+To: finance@company.com
+
+Hi Sarah,
+
+I'm in back-to-back board meetings all day and can't take calls. I need
+you to process an urgent wire transfer — must be completed before 3 PM EST.
+
+Amount: $47,500.00
+Beneficiary: Meridian Consulting LLC
+Bank: First National Bank
+Routing: 082902282
+Account: 4019287364
+
+This is for a new vendor contract I signed this morning. Please treat
+this as CONFIDENTIAL — do not discuss with other team members until
+I give the go-ahead. Legal reasons.
+
+I'll explain everything once I'm out of meetings. Confirm by reply.
+
+Thanks,
+Michael Hartwell
+CEO, Company Corp
+Sent from my iPhone`
+  };
+
+  document.querySelectorAll('.example-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.example;
+      if (EXAMPLES[key]) {
+        emailInput.value = EXAMPLES[key];
+        charCount.textContent = emailInput.value.length.toLocaleString() + ' chars';
+        emailInput.focus();
+      }
+    });
+  });
+
+  // ── Char counter ───────────────────────────────────────────────────────────
+  emailInput.addEventListener('input', () => {
+    charCount.textContent = emailInput.value.length.toLocaleString() + ' chars';
+  });
+
+  // ── Scan history (localStorage) ────────────────────────────────────────────
+  const HISTORY_KEY = 'Hook_history';
+
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+    catch { return []; }
+  }
+  function saveHistory(items) {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 50)));
+  }
+  function renderHistory() {
+    const items = loadHistory();
+    if (items.length === 0) {
+      historyList.innerHTML = '<p class="history-empty">No scans yet.</p>';
+      return;
+    }
+    historyList.innerHTML = items.map((item, idx) => `
+      <div class="history-item" data-idx="${idx}">
+        <div class="history-dot dot-${item.verdict}"></div>
+        <div class="history-meta">
+          <div class="history-subject">${escHtml(item.subject)}</div>
+          <div class="history-time">${item.time}</div>
+        </div>
+        <span class="history-score" style="color:${scoreColor(item.risk_score)}">
+          ${(item.risk_score * 100).toFixed(0)}%
+        </span>
+      </div>
+    `).join('');
+
+    historyList.querySelectorAll('.history-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const item = loadHistory()[+el.dataset.idx];
+        if (item) renderResult(item.result);
+      });
+    });
+  }
+
+  function pushHistory(email, result) {
+    const subject = email.match(/^subject:\s*(.+)/im)?.[1]?.trim() || email.slice(0, 60);
+    const history = loadHistory();
+    history.unshift({
+      subject,
+      verdict: result.verdict,
+      risk_score: result.risk_score,
+      time: new Date().toLocaleTimeString(),
+      result,
+    });
+    saveHistory(history);
+    renderHistory();
+  }
+
+  clearHistoryBtn.addEventListener('click', () => {
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistory();
+  });
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function scoreColor(score) {
+    if (score < 0.35) return 'var(--green)';
+    if (score < 0.65) return 'var(--yellow)';
+    return 'var(--red)';
+  }
+  function verdictIcon(v) {
+    return { safe: '✅', suspicious: '⚠️', phishing: '🚨' }[v] || '❓';
+  }
+
+  // ── Gauge SVG ──────────────────────────────────────────────────────────────
+  function buildGauge(score) {
+    const r = 32;
+    const circ = 2 * Math.PI * r;
+    const offset = circ * (1 - score);
+    const color = scoreColor(score);
+    const pct = (score * 100).toFixed(0);
+    return `
+      <svg viewBox="0 0 80 80">
+        <circle class="risk-gauge-bg" cx="40" cy="40" r="${r}"/>
+        <circle class="risk-gauge-fill"
+          cx="40" cy="40" r="${r}"
+          stroke="${color}"
+          stroke-dasharray="${circ.toFixed(2)}"
+          stroke-dashoffset="${offset.toFixed(2)}"
+          style="filter:drop-shadow(0 0 5px ${color})"
+        />
+      </svg>
+      <div class="risk-label" style="color:${color}">${pct}%</div>
+    `;
+  }
+
+  // ── Tactic chips ───────────────────────────────────────────────────────────
+  const TACTIC_META = {
+    urgency:               { label: 'Urgency',               icon: '⏰' },
+    impersonation:         { label: 'Impersonation',         icon: '🎭' },
+    credential_harvesting: { label: 'Credential Harvesting', icon: '🔑' },
+    suspicious_links:      { label: 'Suspicious Links',      icon: '🔗' },
+    spoofing:              { label: 'Spoofing',              icon: '👤' },
+  };
+
+  function buildTactics(tactics) {
+    return Object.entries(TACTIC_META).map(([key, meta]) => {
+      const active = !!tactics[key];
+      const cls = active ? 'tactic-active' : 'tactic-inactive';
+      return `<span class="tactic-chip ${cls}">${meta.icon} ${escHtml(meta.label)}</span>`;
+    }).join('');
+  }
+
+  // ── Render result ──────────────────────────────────────────────────────────
+  function renderResult(result) {
+    const color = scoreColor(result.risk_score);
+    const pct   = (result.risk_score * 100).toFixed(0);
+    resultsEl.innerHTML = `
+      <div class="result-card">
+        <div class="risk-row">
+          <div class="risk-gauge-wrap">${buildGauge(result.risk_score)}</div>
+          <div class="risk-info">
+            <div class="risk-score-text">Risk Score</div>
+            <div class="verdict-badge verdict-${result.verdict}">
+              ${verdictIcon(result.verdict)} ${result.verdict}
+            </div>
+            <div class="risk-bar-wrap">
+              <div class="risk-bar-fill" style="width:${pct}%;background:${color}"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-label">Tactics Detected</div>
+        <div class="tactics-row">${buildTactics(result.tactics)}</div>
+
+        <div class="section-label">Analysis</div>
+        <div class="explanation-box">${escHtml(result.explanation)}</div>
+
+        <div class="section-label">Recommended Action</div>
+        <div class="action-box">${escHtml(result.recommended_action)}</div>
+      </div>
+    `;
+  }
+
+  function renderError(msg) {
+    resultsEl.innerHTML = `<div class="error-card">⛔ ${escHtml(msg)}</div>`;
+  }
+
+  // ── Analyze ────────────────────────────────────────────────────────────────
+  analyzeBtn.addEventListener('click', async () => {
+    const email = emailInput.value.trim();
+    if (!email) { renderError('Please paste an email before analyzing.'); return; }
+
+    analyzeBtn.disabled = true;
+    spinner.style.display = 'block';
+    btnLabel.textContent = 'Analyzing…';
+    resultsEl.innerHTML = '<p class="placeholder">Contacting Claude API…</p>';
+
+    try {
+      const res  = await fetch('/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        renderError(data.error || `Server error (${res.status})`);
+        return;
+      }
+
+      renderResult(data);
+      pushHistory(email, data);
+    } catch {
+      renderError('Could not reach the Hook server. Is server.py running?');
+    } finally {
+      analyzeBtn.disabled = false;
+      spinner.style.display = 'none';
+      btnLabel.textContent = '⚡ Analyze';
+    }
+  });
+
+  // Ctrl/Cmd+Enter shortcut
+  emailInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) analyzeBtn.click();
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  renderHistory();
+</script>
+</body>
+</html>
