@@ -66,7 +66,7 @@ Hook/
 │   ├── __init__.py       # Public API surface
 │   └── detector.py       # Core detection logic (HookDetector, AnalysisResult)
 ├── tests/
-│   └── test_detector.py  # Pytest unit tests (12 test cases)
+│   └── test_detector.py  # Pytest unit tests (19 test cases)
 ├── demo.py               # CLI demo — runs 5 sample emails
 ├── server.py             # Flask backend (serves dashboard + /analyze endpoint)
 ├── dashboard.html        # Dark-theme browser UI
@@ -102,6 +102,9 @@ python demo.py
 ```bash
 python server.py
 # → http://localhost:5000
+
+# Custom port:
+PORT=8080 python server.py
 ```
 
 ### 3c. Use as a library
@@ -123,6 +126,27 @@ print(f"Verdict: {result.verdict}")
 print(f"Tactics: {[k for k, v in result.tactics.model_dump().items() if v]}")
 print(f"\n{result.explanation}")
 print(f"\nAction: {result.recommended_action}")
+```
+
+---
+
+## Server Endpoints
+
+When running `server.py`, three endpoints are available:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Serves the dashboard UI (`dashboard.html`) |
+| `POST` | `/analyze` | Analyze an email — body: `{"email": "<raw text>"}` |
+| `GET` | `/examples` | Returns the five curated sample emails as JSON |
+| `GET` | `/health` | Liveness check — returns `{"status": "ok"}` |
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:5000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"email": "Subject: URGENT\nFrom: fake@paypa1.com\n\nVerify now or lose access."}'
 ```
 
 ---
@@ -153,6 +177,16 @@ Analyzes raw email text and returns a structured result.
 | `explanation` | `str` | Plain-English analysis |
 | `recommended_action` | `str` | What to do right now |
 
+**Risk score thresholds:**
+
+| Range | Meaning |
+|-------|---------|
+| 0.00 – 0.20 | Clearly legitimate |
+| 0.20 – 0.40 | Minor concerns, most likely benign |
+| 0.40 – 0.60 | Notable red flags — verify through official channels |
+| 0.60 – 0.80 | Multiple phishing indicators — highly suspicious |
+| 0.80 – 1.00 | Classic phishing — do not click, reply, or provide info |
+
 ### `TacticsDetected`
 
 | Field | Type |
@@ -179,7 +213,7 @@ tests/test_detector.py::TestRiskScores::test_phishing_email_scores_high      PAS
 tests/test_detector.py::TestRiskScores::test_suspicious_email_is_middle_range PASSED
 tests/test_detector.py::TestTacticDetection::test_urgency_tactic_detected    PASSED
 ...
-12 passed in 0.18s
+19 passed in 0.18s
 ```
 
 ---
